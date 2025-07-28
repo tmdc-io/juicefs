@@ -597,8 +597,25 @@ func newS3(endpoint, accessKey, secretKey, token string) (ObjectStorage, error) 
 		cfg, err = config.LoadDefaultConfig(ctx,
 			config.WithCredentialsProvider(aws.AnonymousCredentials{}))
 	} else if accessKey != "" {
-		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, token)))
+		// For GCS S3 compatibility, use custom endpoint resolver
+		if isGCS {
+			// Create a custom endpoint resolver for GCS
+			customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+				return aws.Endpoint{
+					URL:               uri.Scheme + "://" + ep,
+					HostnameImmutable: true,
+					SigningRegion:     "us-east-1",
+				}, nil
+			})
+			
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithRegion("us-east-1"),
+				config.WithEndpointResolverWithOptions(customResolver),
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, token)))
+		} else {
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, token)))
+		}
 	} else {
 		cfg, err = config.LoadDefaultConfig(ctx)
 	}
