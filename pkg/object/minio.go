@@ -84,6 +84,10 @@ func newMinio(endpoint, accessKey, secretKey, token string) (ObjectStorage, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %s", err)
 	}
+	
+	// Check if this is a GCS endpoint
+	isGCS := strings.Contains(uri.Host, "storage.googleapis.com")
+	
 	client := s3.NewFromConfig(cfg, func(options *s3.Options) {
 		options.Region = region
 		options.BaseEndpoint = aws.String(uri.Scheme + "://" + uri.Host)
@@ -94,6 +98,17 @@ func newMinio(endpoint, accessKey, secretKey, token string) (ObjectStorage, erro
 			return v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware(stack)
 		})
 		options.RetryMaxAttempts = 1
+		
+		// Special handling for Google Cloud Storage S3 compatibility
+		if isGCS {
+			logger.Infof("Detected Google Cloud Storage S3 compatibility endpoint in MinIO configuration")
+			// For GCS S3 compatibility with MinIO SDK, ensure proper configuration
+			options.UsePathStyle = true
+			// GCS S3 compatibility may need specific region handling
+			if region == awsDefaultRegion {
+				options.Region = "auto"
+			}
+		}
 	})
 	if len(uri.Path) < 2 {
 		return nil, fmt.Errorf("no bucket name provided in %s", endpoint)

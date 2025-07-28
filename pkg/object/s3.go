@@ -553,10 +553,43 @@ func newS3(endpoint, accessKey, secretKey, token string) (ObjectStorage, error) 
 		logger.Infof("CRC checksum is disabled")
 	}
 
+	// Special handling for Google Cloud Storage S3 compatibility
+	isGCS := strings.Contains(uri.Host, "storage.googleapis.com")
+	if isGCS {
+		logger.Infof("Detected Google Cloud Storage S3 compatibility endpoint")
+		// For GCS S3 compatibility, we need to ensure proper configuration
+		optFns = append(optFns, func(options *s3.Options) {
+			// GCS S3 compatibility requires specific settings
+			options.UsePathStyle = true
+			// Ensure proper region handling for GCS
+			if region == awsDefaultRegion {
+				options.Region = "auto"
+			}
+			// GCS S3 compatibility may need specific authentication settings
+			options.APIOptions = append(options.APIOptions, func(stack *smithymiddleware.Stack) error {
+				// Add custom middleware for GCS S3 compatibility
+				return nil
+			})
+		})
+		
+		// Set specific environment variables for GCS S3 compatibility
+		if os.Getenv("AWS_REGION") == "" {
+			os.Setenv("AWS_REGION", "auto")
+		}
+		if os.Getenv("AWS_DEFAULT_REGION") == "" {
+			os.Setenv("AWS_DEFAULT_REGION", "auto")
+		}
+	}
+
 	if ep != "" {
 		optFns = append(optFns, func(options *s3.Options) {
 			options.BaseEndpoint = aws.String(uri.Scheme + "://" + ep)
-			options.UsePathStyle = defaultPathStyle()
+			// For GCS, always use path style
+			if isGCS {
+				options.UsePathStyle = true
+			} else {
+				options.UsePathStyle = defaultPathStyle()
+			}
 		})
 	}
 	var cfg aws.Config
